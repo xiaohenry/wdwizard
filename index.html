@@ -1,223 +1,222 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
+    <head>
+      <meta charset="utf-8">
+      <title>Brainstorm Wizard</title>
+      <meta name="description" content="Brainstorm Wizard">
+      <meta name="author" content="Workday">
+      <!-- csvtojson -->
+      <script src="https://cdn.rawgit.com/Keyang/node-csvtojson/d41f44aa/browser/csvtojson.min.js"></script>
+      <!-- json2csv -->
+      <script src="https://cdn.jsdelivr.net/npm/json2csv"></script>
+      <!-- Bootstrap -->
+      <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+    </head>
 
-  <title>Brainstorm Wizard</title>
-  <meta name="description" content="Brainstorm Wizard">
-  <meta name="author" content="Workday">
-  <label class="btn btn-default" for="originalFile">
-      <input id="originalFile" type="file" style="display:none"
-      onchange="document.querySelector('#originalFileLabel').innerHTML = this.files[0] ? this.files[0].name : ''">
-        Original File
-      </input>
-  </label>
-  <span class='label label-info' id="originalFileLabel"></span>
-  <br>
+    <body>
+      <label class="btn btn-default" for="originalFile">
+          <input id="originalFile" type="file" style="display:none"
+          onchange="document.querySelector('#originalFileLabel').innerHTML = this.files[0] ? this.files[0].name : ''">
+            Original File
+          </input>
+      </label>
+      <span class='label label-info' id="originalFileLabel"></span>
+      <br>
 
-  <label class="btn btn-default" for="newFile">
-      <input id="newFile" type="file" style="display:none"
-      onchange="document.querySelector('#newFileLabel').innerHTML = this.files[0] ? this.files[0].name : ''">
-        New File
-     </input>
-  </label>
-  <span class='label label-info' id="newFileLabel"></span>
-  <br>
+      <label class="btn btn-default" for="newFile">
+          <input id="newFile" type="file" style="display:none"
+          onchange="document.querySelector('#newFileLabel').innerHTML = this.files[0] ? this.files[0].name : ''">
+            New File
+         </input>
+      </label>
+      <span class='label label-info' id="newFileLabel"></span>
+      <br>
 
-  <a id="download" href=""></a>
-  <button class="btn btn-success" id="process">Process results!</button>
-</head>
+      <a id="download" href=""></a>
+      <button class="btn btn-success" id="process">Process results!</button>
 
-<body>
-  <!-- csvtojson -->
-  <script src="https://cdn.rawgit.com/Keyang/node-csvtojson/d41f44aa/browser/csvtojson.min.js"></script>
-  <!-- json2csv -->
-  <script src="https://cdn.jsdelivr.net/npm/json2csv"></script>
-  <!-- Bootstrap -->
-  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+      <script>
+    /*
+     * 1. Take 2 csv inputs
+     * 2. Convert both to json arrays - let's call them originalJson & newJson. Each json object represents a csv row
+     * 3. Compare the two json (the two rows):
+     *      if brainstormId is in both json --> update originalJson with the newJson data (the new row's data)
+     *      if brainstormId is in originalJson only --> remove this row from originalJson (the brainstorm was closed)
+     *      if brainstormId is in newJson only --> add this row to originalJson (a new brainstorm was added)
+     */
+        var columnsOfInterest = [];
+        var rowsAdded = [];
+        var rowsRemoved = [];
+        var rowsUpdated = [];
+        var rowsUnchanged = [];
 
-  <script>
-/*
- * 1. Take 2 csv inputs
- * 2. Convert both to json arrays - let's call them originalJson & newJson. Each json object represents a csv row
- * 3. Compare the two json (the two rows):
- *      if brainstormId is in both json --> update originalJson with the newJson data (the new row's data)
- *      if brainstormId is in originalJson only --> remove this row from originalJson (the brainstorm was closed)
- *      if brainstormId is in newJson only --> add this row to originalJson (a new brainstorm was added)
- */
-    var columnsOfInterest = [];
-    var rowsAdded = [];
-    var rowsRemoved = [];
-    var rowsUpdated = [];
-    var rowsUnchanged = [];
-
-    document.querySelector('#process').addEventListener('click', e => {
-        var originalFile = document.querySelector('#originalFile').files[0];
-        var newFile = document.querySelector('#newFile').files[0];
-        doWork(originalFile, newFile);
-    });
-
-    function doWork(originalFile, newFile) {
-        var originalCsvPromise = processCsv(originalFile);
-        var newCsvPromise = processCsv(newFile);
-
-        // async process both csv files, and wait for them to proceed
-        Promise.all([originalCsvPromise, newCsvPromise]).then(results => {
-            var originalJson = preprocessJson(results[0]);
-            var newJson = preprocessJson(results[1]);
-            markColumnsOfInterest(originalJson);
-            compare(originalJson, newJson);
-            var csv = outputResults(originalJson);
-            triggerDownload(csv);
-        }).catch(err => {
-            console.log(err);
+        document.querySelector('#process').addEventListener('click', e => {
+            var originalFile = document.querySelector('#originalFile').files[0];
+            var newFile = document.querySelector('#newFile').files[0];
+            doWork(originalFile, newFile);
         });
-    }
 
-    function triggerDownload(csv) {
-        var csvData = encodeURI(`data:text/csv;charset=utf-8,${csv})`);
-        var date = new Date().toLocaleDateString().replace(/\//g, "_");
-        var outputFile = `results_${date}.csv`;
+        function doWork(originalFile, newFile) {
+            var originalCsvPromise = processCsv(originalFile);
+            var newCsvPromise = processCsv(newFile);
 
-        // add the data to the download button, and simulate a click to trigger the download prompt
-        var downloadButton = document.querySelector('#download');
-        downloadButton.setAttribute("download", outputFile);
-        downloadButton.setAttribute("href", csvData);
-        downloadButton.click();
-    }
-
-    // async convert a csv file to a json[], where each json object represents a row in the csv file
-    function processCsv(csvFile) {
-        console.log(`Reading ${csvFile.name}`);
-        return new Promise((resolve, reject) => {
-            var reader = new FileReader();
-            reader.onload = (e => {
-                // define the action when we read a file - convert the content to json
-                var fileContent = e.target.result;
-                var json = csv().fromString(fileContent);
-                return resolve(json);
+            // async process both csv files, and wait for them to proceed
+            Promise.all([originalCsvPromise, newCsvPromise]).then(results => {
+                var originalJson = preprocessJson(results[0]);
+                var newJson = preprocessJson(results[1]);
+                markColumnsOfInterest(originalJson);
+                compare(originalJson, newJson);
+                var csv = outputResults(originalJson);
+                triggerDownload(csv);
+            }).catch(err => {
+                console.log(err);
             });
-            reader.readAsText(csvFile);
-        });
-    }
+        }
 
-    function outputResults(json) {
-        console.log(`\nAdded rows: ${rowsAdded.length}`);
-        console.log(`\nRemoved rows: ${rowsRemoved.length}`);
-        console.log(`\nUpdated rows: ${rowsUpdated.length}`);
-        console.log(`\nUnchanged rows: ${rowsUnchanged.length}`);
-        return createCsvOutput(json);
-    }
+        function triggerDownload(csv) {
+            var csvData = encodeURI(`data:text/csv;charset=utf-8,${csv})`);
+            var date = new Date().toLocaleDateString().replace(/\//g, "_");
+            var outputFile = `results_${date}.csv`;
 
-    function createCsvOutput(json) {
-        console.log(`Result csv length: ${json.length}`);
-        var options = {'encoding': 'utf-8'};
-        return json2csv.parse(json, options);
-    }
+            // add the data to the download button, and simulate a click to trigger the download prompt
+            var downloadButton = document.querySelector('#download');
+            downloadButton.setAttribute("download", outputFile);
+            downloadButton.setAttribute("href", csvData);
+            downloadButton.click();
+        }
 
-    function compare(originalJson, newJson) {
-        var originalBrainstormMap = markOccurrences(originalJson);
-        var newBrainstormMap = markOccurrences(newJson);
-        console.log(`Rows in original file : ${Object.keys(originalBrainstormMap).length + 1}`);
-        console.log(`Rows in new  file : ${Object.keys(newBrainstormMap).length + 1}`);
-        removeAndUpdateBrainstorms(originalJson, newJson, newBrainstormMap);
-        addNewBrainstorms(originalJson, newJson, originalBrainstormMap);
-        addBrainstormUrls(originalJson);
-    }
-
-    function removeAndUpdateBrainstorms(originalJson, newJson, newBrainstormMap) {
-        // Be careful with looping and removing items
-        for (var i=originalJson.length-1; i>=0; i--) {
-            var row = originalJson[i];
-            var brainstormId = row[`Brainstorm_ID`];
-
-            if (!newBrainstormMap[brainstormId]) {
-                // new brainstorm map doesn't include this brainstormId - brainstorm was closed
-                originalJson.splice(i, 1);
-                rowsRemoved.push(brainstormId);
-            } else {
-                // update the brainstorm
-                var newRow = newBrainstormMap[brainstormId];
-                var rowUpdated = false;
-                Object.keys(newRow).forEach(column => {
-                    // both maps include the brainstormId -> check if any columns were updated
-                    if (columnsOfInterest.includes(column) && row[column] !== newRow[column]) {
-                        row[column] = newRow[column];
-                        rowUpdated = true;
-                    }
+        // async convert a csv file to a json[], where each json object represents a row in the csv file
+        function processCsv(csvFile) {
+            console.log(`Reading ${csvFile.name}`);
+            return new Promise((resolve, reject) => {
+                var reader = new FileReader();
+                reader.onload = (e => {
+                    // define the action when we read a file - convert the content to json
+                    var fileContent = e.target.result;
+                    var json = csv().fromString(fileContent);
+                    return resolve(json);
                 });
+                reader.readAsText(csvFile);
+            });
+        }
 
-                if (rowUpdated) {
-                    rowsUpdated.push(brainstormId);
+        function outputResults(json) {
+            console.log(`\nAdded rows: ${rowsAdded.length}`);
+            console.log(`\nRemoved rows: ${rowsRemoved.length}`);
+            console.log(`\nUpdated rows: ${rowsUpdated.length}`);
+            console.log(`\nUnchanged rows: ${rowsUnchanged.length}`);
+            return createCsvOutput(json);
+        }
+
+        function createCsvOutput(json) {
+            console.log(`Result csv length: ${json.length}`);
+            var options = {'encoding': 'utf-8'};
+            return json2csv.parse(json, options);
+        }
+
+        function compare(originalJson, newJson) {
+            var originalBrainstormMap = markOccurrences(originalJson);
+            var newBrainstormMap = markOccurrences(newJson);
+            console.log(`Rows in original file : ${Object.keys(originalBrainstormMap).length + 1}`);
+            console.log(`Rows in new  file : ${Object.keys(newBrainstormMap).length + 1}`);
+            removeAndUpdateBrainstorms(originalJson, newJson, newBrainstormMap);
+            addNewBrainstorms(originalJson, newJson, originalBrainstormMap);
+            addBrainstormUrls(originalJson);
+        }
+
+        function removeAndUpdateBrainstorms(originalJson, newJson, newBrainstormMap) {
+            // Be careful with looping and removing items
+            for (var i=originalJson.length-1; i>=0; i--) {
+                var row = originalJson[i];
+                var brainstormId = row[`Brainstorm_ID`];
+
+                if (!newBrainstormMap[brainstormId]) {
+                    // new brainstorm map doesn't include this brainstormId - brainstorm was closed
+                    originalJson.splice(i, 1);
+                    rowsRemoved.push(brainstormId);
                 } else {
-                    rowsUnchanged.push(brainstormId);
+                    // update the brainstorm
+                    var newRow = newBrainstormMap[brainstormId];
+                    var rowUpdated = false;
+                    Object.keys(newRow).forEach(column => {
+                        // both maps include the brainstormId -> check if any columns were updated
+                        if (columnsOfInterest.includes(column) && row[column] !== newRow[column]) {
+                            row[column] = newRow[column];
+                            rowUpdated = true;
+                        }
+                    });
+
+                    if (rowUpdated) {
+                        rowsUpdated.push(brainstormId);
+                    } else {
+                        rowsUnchanged.push(brainstormId);
+                    }
                 }
             }
         }
-    }
 
-    function addNewBrainstorms(originalJson, newJson, originalBrainstormMap) {
-        newJson.forEach(row => {
-            var brainstormId = row[`Brainstorm_ID`];
-            // new brainstorm map has this brainstormId, but the original map does not - a new brainstorm was added
-            if (!originalBrainstormMap[brainstormId]) {
-                var rowWithCommonColumnsOfInterest = {};
-                // only include the columns that we're interested in (check the columns present in the origina csv file)
-                Object.keys(row).forEach(column => {
-                    if (columnsOfInterest.includes(column)) {
-                        rowWithCommonColumnsOfInterest[column] = row[column];
-                    }
-                });
+        function addNewBrainstorms(originalJson, newJson, originalBrainstormMap) {
+            newJson.forEach(row => {
+                var brainstormId = row[`Brainstorm_ID`];
+                // new brainstorm map has this brainstormId, but the original map does not - a new brainstorm was added
+                if (!originalBrainstormMap[brainstormId]) {
+                    var rowWithCommonColumnsOfInterest = {};
+                    // only include the columns that we're interested in (check the columns present in the origina csv file)
+                    Object.keys(row).forEach(column => {
+                        if (columnsOfInterest.includes(column)) {
+                            rowWithCommonColumnsOfInterest[column] = row[column];
+                        }
+                    });
 
-                // add the new row
-                originalJson.push(rowWithCommonColumnsOfInterest);
-                rowsAdded.push(brainstormId);
-            }
-        });
-    }
+                    // add the new row
+                    originalJson.push(rowWithCommonColumnsOfInterest);
+                    rowsAdded.push(brainstormId);
+                }
+            });
+        }
 
-    // Having a hard time generating hyperlinks, so we create a new column for the url
-    function addBrainstormUrls(originalJson) {
-        originalJson.forEach(row => {
-            var brainstormId = row[`Brainstorm_ID`];
-            var brainstormHyperlink = `=HYPERLINK("https://community.workday.com/brainstorms/${brainstormId}", "Link")`;
-            row[`Brainstorm_URL`] = brainstormHyperlink;
-        });
-    }
+        // Having a hard time generating hyperlinks, so we create a new column for the url
+        function addBrainstormUrls(originalJson) {
+            originalJson.forEach(row => {
+                var brainstormId = row[`Brainstorm_ID`];
+                var brainstormHyperlink = `=HYPERLINK("https://community.workday.com/brainstorms/${brainstormId}", "Link")`;
+                row[`Brainstorm_URL`] = brainstormHyperlink;
+            });
+        }
 
-    // Look at the columns that are included in the original file to see which ones we're interested in
-    function markColumnsOfInterest(originalJson) {
-        var sampleRow = originalJson[0];
-        Object.keys(sampleRow).forEach(column => {
-            if (sampleRow.hasOwnProperty(column)) {
-                console.log(`Adding column of interst ${column}`);
-                columnsOfInterest.push(column);
-            }
-        });
-    }
+        // Look at the columns that are included in the original file to see which ones we're interested in
+        function markColumnsOfInterest(originalJson) {
+            var sampleRow = originalJson[0];
+            Object.keys(sampleRow).forEach(column => {
+                if (sampleRow.hasOwnProperty(column)) {
+                    console.log(`Adding column of interst ${column}`);
+                    columnsOfInterest.push(column);
+                }
+            });
+        }
 
-    // remove any "fake" rows - rows without a Brainstorm_ID
-    function preprocessJson(json) {
-        var filteredJson = json.filter(row => {
-            var brainstormId = row['Brainstorm_ID'];
-            brainstormId.replace(/ /g, '');
-            return brainstormId || brainstormId.length
-        });
+        // remove any "fake" rows - rows without a Brainstorm_ID
+        function preprocessJson(json) {
+            var filteredJson = json.filter(row => {
+                var brainstormId = row['Brainstorm_ID'];
+                brainstormId.replace(/ /g, '');
+                return brainstormId || brainstormId.length
+            });
 
-        return filteredJson;
-    }
+            return filteredJson;
+        }
 
-    // map of {'brainstormId': {brainstormJson} } }
-    // to allow us easy retrieval of brainstorms in both the original and new csv
-    function markOccurrences(json) {
-        var occurrenceMap = {};
-        json.forEach(row => {
-            occurrenceMap[row['Brainstorm_ID']] = row;
-        });
+        // map of {'brainstormId': {brainstormJson} } }
+        // to allow us easy retrieval of brainstorms in both the original and new csv
+        function markOccurrences(json) {
+            var occurrenceMap = {};
+            json.forEach(row => {
+                occurrenceMap[row['Brainstorm_ID']] = row;
+            });
 
-        return occurrenceMap;
-    }
+            return occurrenceMap;
+        }
 
-  </script>
-</body>
+      </script>
+    </body>
 </html>
